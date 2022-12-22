@@ -1,25 +1,26 @@
 "use strict";
 import { readdirSync } from "fs";
 import * as id3 from "node-id3";
+import readline from "readline";
 import axios from "axios";
 import * as z from "zod";
 
-(async () => {
-  const ItunesApiSchema = z.object({
-    resultCount: z.number(),
-    results: z.array(
-      z.object({
-        trackName: z.string(),
-        artistName: z.string(),
-        collectionName: z.string(),
-        artworkUrl100: z.string(),
-        releaseDate: z.string(),
-        trackNumber: z.number(),
-        primaryGenreName: z.string(),
-      })
-    ),
-  });
+const ItunesApiSchema = z.object({
+  resultCount: z.number(),
+  results: z.array(
+    z.object({
+      trackName: z.string(),
+      artistName: z.string(),
+      collectionName: z.string(),
+      artworkUrl100: z.string(),
+      releaseDate: z.string(),
+      trackNumber: z.number(),
+      primaryGenreName: z.string(),
+    })
+  ),
+});
 
+(async () => {
   const files = readdirSync("./music");
 
   if (files.length === 0) {
@@ -28,7 +29,7 @@ import * as z from "zod";
   }
 
   const musicData = files.map((file) => {
-    const [part1, part2] = file.split("-");
+    const [part1, part2] = file.split(" - ");
     const [artistName, _] = part2.split(".");
 
     return {
@@ -37,35 +38,72 @@ import * as z from "zod";
     };
   });
 
-  const getData = async () => {
+  const parseMusic = async () => {
     let count = 0;
 
     for (const { title, artist } of musicData) {
-      await new Promise((resolve, reject) => {
-        console.log(`Processing ${title} - ${artist} ${count}...`);
+      await new Promise((resolve) => {
+        ++count;
+        console.log(`${count} --> Processing ${title} - ${artist}...`);
 
         axios
           .get(
-            `https://itunes.apple.com/search?term=${artist}+${title}&entity=song`
+            `https://itunes.apple.com/search?term=${title.replace(
+              /[\.\,\(\)\[\]]/g,
+              ""
+            )}+${artist}&entity=song`
           )
-          .then((response) => {
+          .then(async (response) => {
             if (ItunesApiSchema.safeParse(response.data).success) {
               const { results } = ItunesApiSchema.parse(response.data);
 
-              const [result] = results.filter(
+              let [result] = results.filter(
                 ({ trackName, artistName }) =>
-                  trackName?.toLowerCase() === title?.toLowerCase() &&
+                  trackName
+                    ?.toLowerCase()
+                    .replace(/[\.\,\(\)\[\]\'\"]/g, "") ===
+                    title?.toLowerCase().replace(/[\.\,\(\)\[\]\'\"]/g, "") &&
                   artistName?.toLowerCase() === artist?.toLowerCase()
               );
 
-              console.table({
-                title: result?.trackName,
-                artist: result?.artistName,
-                album: result?.collectionName,
-                year: result?.releaseDate?.split("-")[0],
-                genre: result?.primaryGenreName,
-                trackNumber: result?.trackNumber,
-              });
+              // console.table({
+              //   title: result?.trackName,
+              //   artist: result?.artistName,
+              //   album: result?.collectionName,
+              //   year: result?.releaseDate?.split("-")[0],
+              //   genre: result?.primaryGenreName,
+              //   trackNumber: result?.trackNumber,
+              // });
+
+              if (!result) {
+                console.log(
+                  "Unable to automatically find data!\nCan you select the correct data from the list below?"
+                );
+                console.table(
+                  results.slice(0, 5).map((result) => ({
+                    title: result?.trackName,
+                    artist: result?.artistName,
+                  }))
+                );
+
+                const rl = readline.createInterface({
+                  input: process.stdin,
+                  output: process.stdout,
+                });
+
+                result = await new Promise((resolve) => {
+                  rl.question(
+                    "Enter the index of the correct data: ",
+                    (index) => {
+                      rl.close();
+                      console.log(`You entered: ${index}`);
+                      resolve(
+                        results.filter((_, i) => i === parseInt(index))[0]
+                      );
+                    }
+                  );
+                });
+              }
 
               const tags = id3.read(
                 "./music/" + title + " - " + artist + ".mp3"
@@ -79,27 +117,19 @@ import * as z from "zod";
               tags.trackNumber = result.trackNumber?.toString();
               tags.image = result.artworkUrl100;
 
+              console.log(tags);
+
               id3.write(tags, "./music/" + title + " - " + artist + ".mp3");
             } else {
-              reject("Invalid response from iTunes API");
+              // reject("Invalid response from iTunes API");
             }
           })
-          .catch((error) => {
-            console.error(error);
-            reject(error);
-          })
-          .finally(() => {
-            resolve(true);
-          });
-      }).then(() => {
-        count++;
+          .finally(() => resolve(true));
       });
     }
-
-    return count;
   };
 
-  const count = await getData();
+  await parseMusic();
 
-  console.log(`Successfully processed ${count}/${musicData.length} files!`);
+  console.log(`Processed files!`);
 })();
