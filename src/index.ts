@@ -21,22 +21,33 @@ const ItunesApiSchema = z.object({
 });
 
 (async () => {
-  const files = readdirSync("./music");
+  // read only .mp3 files
+  const files = readdirSync("./music").filter((file) => file.endsWith(".mp3"));
 
   if (files.length === 0) {
     console.log("No files found!");
     process.exit(0);
   }
 
-  const musicData = files.map((file) => {
-    const [part1, part2] = file.split(" - ");
-    const [artistName, _] = part2.split(".");
+  let musicData: {
+    title: string;
+    artist: string;
+  }[];
 
-    return {
-      title: part1.trim(),
-      artist: artistName.trim(),
-    };
-  });
+  try {
+    musicData = files.map((file) => {
+      const [part1, part2] = file.split(" - ");
+      const [artistName, _] = part2.split(".");
+
+      return {
+        title: part1.trim(),
+        artist: artistName.trim(),
+      };
+    });
+  } catch (error) {
+    console.error("Invalid file name format!");
+    process.exit(1);
+  }
 
   const parseMusic = async () => {
     let count = 0;

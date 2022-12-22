@@ -14,6 +14,8 @@ Put songs in the `music` folder using the following format:
 
 ./music/[title] - [artist].mp3
 
+You should have something like this:
+
 ```bash
 music
 ├── Love Me Do - The Beatles.mp3
@@ -26,6 +28,8 @@ Then run the following command:
 ```bash
 $ yarn start # or pnpm start
 ```
+
+You can also use my mp3 downloader which you can find [here](https://brianify.herbievine.com)! :)
 
 ### License
 
