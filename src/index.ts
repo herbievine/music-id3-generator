@@ -90,12 +90,14 @@ const ItunesApiSchema = z.object({
                 console.log(
                   "Unable to automatically find data!\nCan you select the correct data from the list below?"
                 );
-                console.table(
-                  results.slice(0, 5).map((result) => ({
-                    title: result?.trackName,
-                    artist: result?.artistName,
-                  }))
-                );
+
+                results
+                  .slice(0, 5)
+                  .map((result, index) =>
+                    console.log(
+                      `${index} - ${result.trackName} by ${result.artistName}`
+                    )
+                  );
 
                 const rl = readline.createInterface({
                   input: process.stdin,
@@ -127,8 +129,6 @@ const ItunesApiSchema = z.object({
               tags.genre = result.primaryGenreName;
               tags.trackNumber = result.trackNumber?.toString();
               tags.image = result.artworkUrl100;
-
-              console.log(tags);
 
               id3.write(tags, "./music/" + title + " - " + artist + ".mp3");
             } else {
