@@ -5,24 +5,25 @@ import readline from "readline";
 import axios from "axios";
 import * as z from "zod";
 
+const TrackSchema = z.object({
+  trackName: z.string().nullish(),
+  artistName: z.string().nullish(),
+  collectionName: z.string().nullish(),
+  artworkUrl100: z.string().nullish(),
+  releaseDate: z.string().nullish(),
+  trackNumber: z.number().nullish(),
+  primaryGenreName: z.string().nullish(),
+});
+
 const ItunesApiSchema = z.object({
   resultCount: z.number(),
-  results: z.array(
-    z.object({
-      trackName: z.string(),
-      artistName: z.string(),
-      collectionName: z.string(),
-      artworkUrl100: z.string(),
-      releaseDate: z.string(),
-      trackNumber: z.number(),
-      primaryGenreName: z.string(),
-    })
-  ),
+  results: z.array(TrackSchema),
 });
 
 (async () => {
   // read only .mp3 files
-  const files = readdirSync("./music").filter((file) => file.endsWith(".mp3"));
+  const rootPath = process.argv[2] ?? "./music";
+  const files = readdirSync(rootPath).filter((file) => file.endsWith(".mp3"));
 
   if (files.length === 0) {
     console.log("No files found!");
@@ -53,9 +54,16 @@ const ItunesApiSchema = z.object({
     let count = 0;
 
     for (const { title, artist } of musicData) {
-      await new Promise((resolve) => {
+      await new Promise((resolve, reject) => {
         ++count;
         console.log(`${count} --> Processing ${title} - ${artist}...`);
+
+        const tags = id3.read(rootPath + "/" + title + " - " + artist + ".mp3");
+
+        if (tags.title && tags.artist) {
+          console.log("Tags already exist!");
+          return resolve(true);
+        }
 
         axios
           .get(
@@ -76,16 +84,6 @@ const ItunesApiSchema = z.object({
                     title?.toLowerCase().replace(/[\.\,\(\)\[\]\'\"]/g, "") &&
                   artistName?.toLowerCase() === artist?.toLowerCase()
               );
-
-              // console.table({
-              //   title: result?.trackName,
-              //   artist: result?.artistName,
-              //   album: result?.collectionName,
-              //   year: result?.releaseDate?.split("-")[0],
-              //   genre: result?.primaryGenreName,
-              //   trackNumber: result?.trackNumber,
-              // });
-
               if (!result) {
                 console.log(
                   "Unable to automatically find data!\nCan you select the correct data from the list below?"
@@ -118,21 +116,23 @@ const ItunesApiSchema = z.object({
                 });
               }
 
-              const tags = id3.read(
-                "./music/" + title + " - " + artist + ".mp3"
-              );
+              if (TrackSchema.safeParse(result).success) {
+                const tags = id3.read(
+                  rootPath + "/" + title + " - " + artist + ".mp3"
+                );
 
-              tags.title = result.trackName;
-              tags.artist = result.artistName;
-              tags.album = result.collectionName;
-              tags.year = result.releaseDate?.split("-")[0];
-              tags.genre = result.primaryGenreName;
-              tags.trackNumber = result.trackNumber?.toString();
-              tags.image = result.artworkUrl100;
+                tags.title = result.trackName ?? undefined;
+                tags.artist = result.artistName ?? undefined;
+                tags.album = result.collectionName ?? undefined;
+                tags.year = result.releaseDate?.split("-")[0];
+                tags.genre = result.primaryGenreName ?? undefined;
+                tags.trackNumber = result.trackNumber?.toString();
+                tags.image = result.artworkUrl100 ?? undefined;
 
-              id3.write(tags, "./music/" + title + " - " + artist + ".mp3");
+                id3.write(tags, rootPath + title + " - " + artist + ".mp3");
+              }
             } else {
-              // reject("Invalid response from iTunes API");
+              reject("Invalid response from iTunes API!");
             }
           })
           .finally(() => resolve(true));
@@ -140,7 +140,10 @@ const ItunesApiSchema = z.object({
     }
   };
 
-  await parseMusic();
-
-  console.log(`Processed files!`);
+  try {
+    await parseMusic();
+    console.log("Process complete!");
+  } catch (error) {
+    console.error(error);
+  }
 })();
